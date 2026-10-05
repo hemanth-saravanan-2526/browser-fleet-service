@@ -81,7 +81,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--single-process")
     chrome_options.add_argument("--homedir=/tmp")
     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
     chrome_options.add_argument("--disk-cache-dir=/tmp/selenium-cache")
@@ -182,6 +181,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             except Exception:
                 pass
         shutil.rmtree(user_data_dir, ignore_errors=True)
+        shutil.rmtree("/tmp/selenium-cache", ignore_errors=True)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return {

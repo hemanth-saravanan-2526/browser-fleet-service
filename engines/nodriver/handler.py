@@ -71,7 +71,6 @@ async def execute_scrape(event: Dict[str, Any]) -> Dict[str, Any]:
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--no-zygote",
-        "--single-process",
         "--homedir=/tmp",
         "--disk-cache-dir=/tmp/nodriver-cache",
     ]
@@ -194,6 +193,7 @@ async def execute_scrape(event: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 pass
         shutil.rmtree(user_data_dir, ignore_errors=True)
+        shutil.rmtree("/tmp/nodriver-cache", ignore_errors=True)
 
     duration_ms = int((time.time() - start_time) * 1000)
     return {
