@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import shutil
 import sys
 import time
 import uuid
@@ -30,10 +31,19 @@ def get_chromium_args():
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--no-zygote",
-        "--single-process",
         "--homedir=/tmp",
         "--disk-cache-dir=/tmp/chromium-cache",
     ]
+
+
+def cleanup_tmp():
+    """Cleans up temporary Chromium cache files to prevent /tmp saturation across warm invocations."""
+    try:
+        cache_dir = "/tmp/chromium-cache"
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def upload_to_s3(key: str, data: bytes, content_type: str) -> Optional[str]:
@@ -77,6 +87,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     error_msg = None
     status = "success"
 
+    browser: Optional[Browser] = None
     try:
         with sync_playwright() as p:
             launch_args = get_chromium_args()
@@ -90,7 +101,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 launch_kwargs["executable_path"] = executable_path
 
             logger.info(f"Launching Chromium (job_id: {job_id})...")
-            browser: Browser = p.chromium.launch(**launch_kwargs)
+            browser = p.chromium.launch(**launch_kwargs)
 
             context_options: Dict[str, Any] = {
                 "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -195,8 +206,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 else:
                     result_data["excel"] = base64.b64encode(excel_bytes).decode("utf-8")
 
-            browser.close()
-
     except PlaywrightError as pe:
         if "Timeout" in str(pe):
             status = "timeout"
@@ -209,6 +218,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         status = "error"
         error_msg = f"Unexpected error: {str(e)}"
         logger.exception(f"Unexpected error scraping {url}: {e}")
+    finally:
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        cleanup_tmp()
 
     duration_ms = int((time.time() - start_time) * 1000)
 
