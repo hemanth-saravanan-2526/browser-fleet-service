@@ -4,6 +4,8 @@ import json
 import os
 import sys
 import time
+import re
+import ast
 import subprocess
 import urllib.request
 import urllib.error
@@ -110,6 +112,8 @@ def scrape(url: str, engine: str = "playwright", output_format: str = "text", wa
     print(f"Status:       {status.upper()}")
     print(f"Engine Used:  {engine_used}")
     print(f"Duration:     {duration_ms} ms (Total roundtrip: {total_time} ms)")
+    if status != "success":
+        print(f"Error:        {result.get('error')}")
     print(f"{'='*60}\n")
 
     if output_format == "text":
@@ -187,12 +191,47 @@ def scrape(url: str, engine: str = "playwright", output_format: str = "text", wa
 
 
 
+def parse_extract_schema(extract_arg: str) -> dict:
+    """Parses JSON schema from string, file path, or PowerShell-formatted CLI arguments."""
+    if not extract_arg:
+        return None
+    # 1. If it's a file path, load from file
+    if os.path.isfile(extract_arg):
+        with open(extract_arg, "r", encoding="utf-8") as f:
+            return json.load(f)
+    # 2. Try standard json.loads
+    try:
+        return json.loads(extract_arg)
+    except Exception:
+        pass
+    # 3. Try ast.literal_eval for Python dictionary syntax
+    try:
+        val = ast.literal_eval(extract_arg)
+        if isinstance(val, dict):
+            return val
+    except Exception:
+        pass
+    # 4. Handle PowerShell-stripped unquoted key-values: {_item: ..., title: ...}
+    clean = extract_arg.strip()
+    if clean.startswith("{") and clean.endswith("}"):
+        clean = clean[1:-1].strip()
+    result = {}
+    parts = re.split(r",\s*(?=[a-zA-Z_][a-zA-Z0-9_]*\s*:)", clean)
+    for p in parts:
+        if ":" in p:
+            k, v = p.split(":", 1)
+            result[k.strip().strip("'\"")] = v.strip().strip("'\"")
+    if result:
+        return result
+    raise ValueError(f"Could not parse extraction schema: {extract_arg}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Browser Fleet CLI Scraper")
     parser.add_argument("url", nargs="?", default="https://quotes.toscrape.com", help="Target URL to scrape")
     parser.add_argument("--engine", choices=["playwright", "nodriver", "selenium"], default="playwright", help="Browser engine")
     parser.add_argument("--output", choices=["text", "html", "screenshot", "json", "excel"], default="text", help="Output format")
-    parser.add_argument("--extract", default=None, help="JSON extraction schema, e.g. '{\"_item\": \".quote\", \"quote\": \".text\", \"author\": \".author\"}'")
+    parser.add_argument("--extract", default=None, help="JSON extraction schema or path to schema .json file")
     parser.add_argument("--wait", default=None, help="CSS selector or ms delay to wait for")
 
     parser.add_argument("--endpoint", default=None, help="Custom API endpoint (defaults to cloud API Gateway)")
@@ -203,10 +242,11 @@ if __name__ == "__main__":
     extract_dict = None
     if args.extract:
         try:
-            extract_dict = json.loads(args.extract)
+            extract_dict = parse_extract_schema(args.extract)
         except Exception as e:
-            print(f"[!] Invalid JSON schema in --extract: {e}")
+            print(f"[!] Invalid extraction schema in --extract: {e}")
             sys.exit(1)
+
 
     scrape(
         url=args.url,

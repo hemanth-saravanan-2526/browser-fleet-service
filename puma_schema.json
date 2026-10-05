@@ -1,0 +1,6 @@
+{
+  "_item": "li[data-test-id='product-list-item']",
+  "title": "a[data-test-id='product-list-item-link']@aria-label",
+  "price": "[data-test-id='price']",
+  "link": "a[data-test-id='product-list-item-link']@href"
+}
