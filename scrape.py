@@ -8,6 +8,12 @@ import subprocess
 import urllib.request
 import urllib.error
 
+# Ensure Windows terminal handles international characters and currency symbols cleanly
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 CLOUD_ENDPOINT = "https://v7gqj1d1xg.execute-api.us-east-1.amazonaws.com/scrape"
 LOCAL_ENDPOINT = "http://localhost:9000/2015-03-31/functions/function/invocations"
 
@@ -117,11 +123,18 @@ def scrape(url: str, engine: str = "playwright", output_format: str = "text", wa
 
     elif output_format == "html":
         html_content = res_data.get("html", "")
+        s3_url = res_data.get("s3_url")
         file_path = os.path.join("output", "scraped_page.html")
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-        print(f"--- EXTRACTED HTML ({len(html_content)} bytes) ---")
-        print(f"[OK] Full HTML saved to: {file_path}")
+        if html_content:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+            print(f"--- EXTRACTED HTML ({len(html_content)} bytes) ---")
+            print(f"[OK] Full HTML saved to: {file_path}")
+        elif s3_url:
+            print(f"[*] Large HTML stored in Amazon S3, fetching presigned URL...")
+            urllib.request.urlretrieve(s3_url, file_path)
+            print(f"[OK] Full HTML downloaded ({os.path.getsize(file_path)} bytes): {file_path}")
+            print(f"    S3 Artifact: {s3_url}")
 
     elif output_format == "json":
         data_records = res_data.get("data") or res_data.get("json_data", {})
@@ -157,14 +170,21 @@ def scrape(url: str, engine: str = "playwright", output_format: str = "text", wa
 
     elif output_format == "screenshot":
         b64_img = res_data.get("screenshot", "")
+        s3_url = res_data.get("s3_url")
+        file_path = os.path.join("output", "scraped_screenshot.png")
         if b64_img:
-            file_path = os.path.join("output", "scraped_screenshot.png")
             img_bytes = base64.b64decode(b64_img)
             with open(file_path, "wb") as f:
                 f.write(img_bytes)
             print(f"[OK] Full-page screenshot saved ({len(img_bytes)} bytes): {file_path}")
+        elif s3_url:
+            print(f"[*] Large screenshot stored in Amazon S3, fetching presigned URL...")
+            urllib.request.urlretrieve(s3_url, file_path)
+            print(f"[OK] Full-page screenshot downloaded ({os.path.getsize(file_path)} bytes): {file_path}")
+            print(f"    S3 Artifact: {s3_url}")
 
     return result
+
 
 
 if __name__ == "__main__":
